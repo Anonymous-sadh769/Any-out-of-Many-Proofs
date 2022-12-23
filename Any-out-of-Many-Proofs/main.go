@@ -2,8 +2,12 @@ package main
 
 import (
 	"fmt"
+	"time"
+
 	//"math/big"
 	"github.com/decred/dcrd/dcrec/secp256k1/v3"
+
+	"github.com/egoistzty/Code-Any-out-of-Many.git/utils"
 )
 
 var prover Prover
@@ -11,90 +15,63 @@ var verifier Verifier
 
 func main() {
 
-	setup(4, 16) // k=4 for secret number N = 16 for ring size
+	setup(64, 256) // k for secret number N for ring size
+	p_start := time.Now()
+	fmt.Println("p_start:", p_start)
 	zkpConstruct()
-	// zkp()
-	// isInRange := zkpVerify()
-	// fmt.Println("Verification result:", isInRange)
-	//test()
+	p_elapsed := time.Since(p_start)
+	fmt.Println("Prover Running Time:", p_elapsed)
+
+	v_start := time.Now()
+	fmt.Println("v_start:", v_start)
+	zkpVerify()
+	v_elapsed := time.Since(v_start)
+	fmt.Println("Verify Running Time:", v_elapsed)
+
 }
 
-func setup(k int64, N int64) {
+func setup(k int, N int) {
 
-	curve = secp256k1.S256() //Choose an elliptic curve
+	var curve = secp256k1.S256() //Choose an elliptic curve
 
-	g := GeneratePoint()
-	fmt.Println("g = ", g)
-	u := GeneratePoint()
-	fmt.Println("u = ", u)
-	v := GeneratePoint()
-	fmt.Println("v = ", v)
-	Public_g := GeneratePoint()
-	fmt.Println("Public g = ", v)
+	g := utils.GeneratePoint()
+	u := utils.GeneratePoint()
+	v := utils.GeneratePoint()
+	fmt.Println("Generate g,u,v...")
+	Public_g := utils.GeneratePoint()
 
-	h_Vector := GenerateMultiPoint(N)
-	fmt.Println("vector h = ", h_Vector)
+	g_Vector := utils.GenerateMultiPoint(N)
+	h_Vector := utils.GenerateMultiPoint(N)
+	fmt.Println("Generate vectors g_vector, h_vector...")
 
 	//construct an object prover
-	err := prover.New(Public_g, g, u, v, h_Vector, k, N, *curve)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	prover.New(Public_g, g, u, v, g_Vector, h_Vector, k, N, *curve)
+
 	//construct an object verifier
-	verifier.New(Public_g, g, u, v, h_Vector, k, N, *curve)
-
-	////Prover compute Commitments A, S and transmit to verifier
-	A, B, C, D := prover.GetCom()
-	//verifier.GetCom(A, S)
-	fmt.Println("A = ", A, "B = ", B, "C = ", C, "D = ", D)
-
-	//verifier get A, B, C, D and transmit y, z, d to prover
-	prover.y = verifier.y
-	prover.z = verifier.z
-	prover.d = verifier.d
-	fmt.Println("y = ", prover.y, "z = ", prover.z)
+	verifier.New(Public_g, g, u, v, g_Vector, h_Vector, k, N, *curve)
 }
 
 func zkpConstruct() {
+	fmt.Println("Genreate ZKP transcripts...")
+	//Prover compute Commitments A, B and transmit to verifier
+	verifier.A, verifier.B = prover.GetAB()
+	//verifier.GetCom(A, S)
+
+	//verifier get A, B and transmit y, z to prover
+	prover.y, prover.z = verifier.GetYZ()
 
 	//Prover compute Commitments T1, T2 and transmit to verifier
-	T1, T2 := prover.GetT()
-	verifier.GetT(T1, T2)
-	fmt.Println("T1 = ", T1, "T2 = ", T2)
+	verifier.T1, verifier.T2, verifier.E = prover.GetT()
 
-	//verifier get T1, T2 and transmit x to prover
-	verifier.GenerateX()
-	prover.c = verifier.c
-	fmt.Println("c = ", prover.c)
+	//verifier get T1, T2, E and transmit x to prover
+	prover.x = verifier.GetX()
+
+	verifier.Pub_Vec_Key, verifier.proverZKP = prover.GetRsp()
+	fmt.Println("ZKProofs", verifier.proverZKP)
 }
 
-// func zkp() {
-// 	proverZKP := prover.GetProverZKP()
-// 	verifier.proverZKP = proverZKP
-// 	fmt.Println("ZKP = ", proverZKP)
-// }
-
-// func zkpVerify() bool {
-// 	return verifier.VerifyZKP()
-// }
-
-// func test() {
-// 	tx := negBig(big.NewInt(11))
-// 	taux := big.NewInt(0)
-// 	delta := negBig(big.NewInt(31))
-// 	x0 := negBig(big.NewInt(11))
-// 	x1 := big.NewInt(20)
-// 	x2 := negBig(big.NewInt(31))
-
-// 	commit2 := CommitSingle(prover.H, x0.Bytes())
-// 	commit3 := Commit(prover.H, prover.H, x1.Bytes(), x2.Bytes())
-
-// 	V := Commit(prover.G, prover.H, big.NewInt(prover.v).Bytes(), big.NewInt(int64(prover.gamma)).Bytes())
-// 	commit0 := Commit(prover.G, prover.H, tx.Bytes(), taux.Bytes())
-// 	commit1 := Commit(V, prover.G, big.NewInt(1).Bytes(), delta.Bytes())
-
-// 	fmt.Println(IsEqual(commit0, commit1))
-// 	fmt.Println(IsEqual(commit2, commit3))
-
-// }
+func zkpVerify() {
+	fmt.Println("-----------------------------------------------")
+	fmt.Println("Received ZKP transcripts and start verifying...")
+	verifier.ParseZKP()
+}
